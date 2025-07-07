@@ -1,81 +1,131 @@
+
 #include <iostream>
 #include <sys\stat.h>
 #include <dirent.h>
-#include <conio.h>
 #include <Windows.h>
+#include <vector>
+#include <filesystem>
 #include <mmsystem.h>
 #pragma comment(lib, "winmm.lib")
 
 
 using namespace std;
+namespace fs = std::filesystem;
 
-void chooseSong(const string& filePath)
+void chooseSong(string& filePath,const string& folderName)
 {
-    // Play the music file
-    string songName;
-    cin>> songName;
-    filePath = f"filepath/{songName}.mp3"; // Assuming the file is in the same directory
+     // Play the music file
+     string songName;
+    cout << "Which song would you like to play?" << endl;
+    cout << "Enter the name of the song (without extension): ";
+    getline(cin, songName);
+     
+    string chosenFile = folderName + "/" + songName + ".wav"; 
+    filePath = chosenFile;
+
+    if (!fs::exists(chosenFile)) {
+        cout << "ERROR: The file does not exist." << endl;
+        filePath = "";
+        return;
+    }
+
     PlaySound(filePath.c_str(), NULL, SND_FILENAME | SND_ASYNC);
 }
-void pauseSong()
+
+int findSongIndex(const vector<string>& playlist, const string& songName)
 {
-    // Pause the music
-    PlaySound(0,0,0);
+    for (size_t i = 0; i < playlist.size(); ++i) {
+        if (playlist[i] == songName) {
+            return i;
+        }
+    }
+    return -1; // Not found
 }
-void showFolderContents(string folderName)
+
+bool endsWithWav(const string& fileName){
+     if (fileName.length() < 4) return false;
+     string ext = fileName.substr(fileName.length() - 4);
+     for(auto& c: ext) c = tolower(c);
+     return ext == ".wav";
+}
+
+vector<string>getFirst10WavFiles(const string& folderName)
 {
      struct dirent *d;
      struct stat dst;
+     vector <string> files;
+     int fileCount = 0;
 
-     DIR *dr;
-     string path = ".\\";
-     dr = opendir(path.c_str());
-     if (dr == NULL) {
-         for (d = readdir(dr); d!= NULL; d= readdir(dr)) {
-            string type = d -> d_name;
-            type = path + type;
-            if(stat(type.c_str(), &dst)==0)
-            {
-               if (dst.st_mode & S_IFDIR){
-                    type = "is a Folder";
-               }
-               else if  (dst.st_mode & S_IFREG){
-                    type = "is a File";
-               }
-            }
-            cout << d ->d_name <<endl <<type<<endl;
+     DIR *dr = opendir(folderName.c_str());
+     if (dr != NULL) {
+          while((d=readdir(dr)) !=NULL && fileCount < 10){
+               string fileName = d->d_name;
+               string fullPath = folderName + "/" + fileName;
 
-         }
+               // We check if it's a folder
+               if (stat(fullPath.c_str(), &dst) == 0 && S_ISREG(dst.st_mode)&& endsWithWav(fileName) && fileName !="." && fileName!= "..")
+               {
+                    files.push_back(fullPath);
+                    fileCount++;
+               }
+          }
+          closedir(dr);
+     }else{
+          cout << "ERROR: Could not open "<< folderName << endl;
      }
-     else{
-          cout<<"ERROR"<<endl;
-     }
-     getch();
+     return files;
 }
 int main()
 {
+     string folderName = "";
+     string filePath = "";
+
+     cout << "----------------------------------------" << endl;
      cout << "Welcome to the Music Player!" << endl;
      cout << "This is a simple music player application." << endl;
      cout << "You can play, pause, and stop music tracks." << endl;
-     string folderName;
      cout << "Enter folder path to choose from: ";
+
      cin >> folderName;
+     cin.ignore();
 
-     // Here we would normally read the folder path and list the music files.
-     // For simplicity, we will just simulate this with a placeholder.
+     vector<string> playlist = getFirst10WavFiles(folderName);
+     if(playlist.empty()){
+          cout << "No WAV files found!" << endl;
+          return 1;
+     }
 
-     // Here we will print out the music files. (try and limit it to 10 files)
-     // for x in folder_path{
-     //     cout << "{i}. {x}" << endl;
-     // }
-     cout << "Type 'play <track_number>' to play a specific track." << endl;
+     string currentFile;
+     int currentIndex = 0;
 
-     // While track is being played have the options available:
-     cout << "Type 'pause' to pause the current track." << endl;
-     cout << "Type 'skip' to stop the current track." << endl;
-     cout << "Type 'exit' to stop the current track." << endl;
-     // End the program when they type 'exit or the file ends.
+     chooseSong(currentFile,folderName);
 
+     if(currentFile.empty() || !fs::exists(currentFile)){
+          currentFile = playlist[0];
+          PlaySound(currentFile.c_str(), NULL, SND_FILENAME | SND_ASYNC);
+     }
+     
+     currentIndex = findSongIndex(playlist, currentFile);
+     if(currentIndex == -1) currentIndex = 0;
 
+     cout << "Now playing: " << currentFile << endl;
+
+     char command;
+     while(true){
+          cout << "Enter 'n' to skip to next song, 'q' to quit: ";
+          cin >> command;
+          cin.ignore(); 
+
+          if (command =='q'){
+               PlaySound(NULL, NULL, 0); // Stop the sound
+               break;
+          } else if (command == 'n') {
+               PlaySound(NULL, NULL, 0); // Stop the current sound
+               currentIndex = (currentIndex + 1)% playlist.size();
+               currentFile = playlist[currentIndex];
+               PlaySound(currentFile.c_str(),NULL, SND_FILENAME | SND_ASYNC);
+               cout << "Now playing: " << currentFile << endl;
+          }
+     }
     return 0;
 }
